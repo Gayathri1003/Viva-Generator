@@ -4,14 +4,18 @@ import { Question } from '../types/exam';
 
 interface QuestionState {
   questions: Question[];
+  questionsToDeploy: Question[];
   addQuestion: (question: Omit<Question, 'id'>) => void;
   updateQuestion: (id: string, question: Partial<Question>) => void;
   deleteQuestion: (id: string) => void;
   getQuestionsBySubject: (subjectId: string) => Question[];
+  setQuestionsToDeploy: (questions: Question[]) => void;
+  clearQuestionsToDeploy: () => void;
 }
 
 export const useQuestionStore = create<QuestionState>((set, get) => ({
   questions: [],
+  questionsToDeploy: [],
 
   addQuestion: (questionData) => {
     const newQuestion: Question = {
@@ -40,5 +44,13 @@ export const useQuestionStore = create<QuestionState>((set, get) => ({
 
   getQuestionsBySubject: (subjectId) => {
     return get().questions.filter((question) => question.subject_id === subjectId);
+  },
+
+  setQuestionsToDeploy: (questions) => {
+    set({ questionsToDeploy: questions });
+  },
+
+  clearQuestionsToDeploy: () => {
+    set({ questionsToDeploy: [] });
   },
 }));

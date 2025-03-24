@@ -2,8 +2,8 @@
 import { Dispatch, SetStateAction } from 'react';
 
 interface MethodSelectorProps {
-  method: 'topic' | 'document';
-  setMethod: Dispatch<SetStateAction<'topic' | 'document'>>;
+  method: 'topic' | 'document' | 'manual';
+  setMethod: Dispatch<SetStateAction<'topic' | 'document' | 'manual'>>;
 }
 
 const MethodSelector: React.FC<MethodSelectorProps> = ({ method, setMethod }) => {
@@ -32,6 +32,16 @@ const MethodSelector: React.FC<MethodSelectorProps> = ({ method, setMethod }) =>
           }`}
         >
           Document-Based
+        </button>
+        <button
+          onClick={() => setMethod('manual')}
+          className={`px-4 py-2 rounded-lg ${
+            method === 'manual'
+              ? 'bg-indigo-600 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          Manual Entry
         </button>
       </div>
     </div>

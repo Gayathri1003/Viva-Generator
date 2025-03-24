@@ -8,8 +8,9 @@ import TeacherDashboard from './pages/teacher/Dashboard';
 import StudentDashboard from './pages/student/Dashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
-import SubjectList from '../src/pages/teacher/components/SubjectList'; // Import SubjectList
-import QuestionGenerator from './pages/teacher/QuestionGenerator'; // Import QuestionGenerator
+import SubjectList from './pages/teacher/components/SubjectList';
+import QuestionGenerator from './pages/teacher/QuestionGenerator';
+import QuestionSetup from './pages/teacher/exam/QuestionSetup'
 
 function App() {
   return (
@@ -44,7 +45,8 @@ function App() {
                   <Route path="subjects" element={<SubjectList />} />
                   {/* Question generation page with subjectId */}
                   <Route path="subject/:subjectId/questions" element={<QuestionGenerator />} />
-                  {/* Add more teacher routes as needed */}
+                  {/* Exam setup page */}
+                  <Route path="subject/:subjectId/exam-setup" element={<QuestionSetup />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>

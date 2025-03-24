@@ -1,16 +1,9 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+// src/pages/teacher/components/TopicGenerator.tsx
+import { useState } from 'react';
 import { generateQuestionsFromText } from '../../../lib/api/gemini';
 import { useQuestionStore } from '../../../store/questionStore';
 import toast from 'react-hot-toast';
 import { AiOutlineLoading3Quarters } from 'react-icons/ai';
-
-interface Question {
-  text: string;
-  options: string[];
-  correct_answer: string; // 'A', 'B', 'C', 'D'
-  difficulty: 'easy' | 'medium' | 'hard';
-}
 
 interface TopicGeneratorProps {
   subjectId: string;
@@ -21,22 +14,13 @@ const TopicGenerator: React.FC<TopicGeneratorProps> = ({ subjectId, onQuestionsG
   const [topic, setTopic] = useState('');
   const [count, setCount] = useState(5);
   const [loading, setLoading] = useState(false);
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [selectedQuestions, setSelectedQuestions] = useState<string[]>([]);
-  const { addQuestion, getQuestionsBySubject } = useQuestionStore();
-  const navigate = useNavigate();
-
-  // Load questions for the subject from the store when the component mounts
-  useEffect(() => {
-    const subjectQuestions = getQuestionsBySubject(subjectId);
-    setQuestions(subjectQuestions);
-  }, [subjectId, getQuestionsBySubject]);
+  const { addQuestion } = useQuestionStore();
 
   // Parse the API response to extract questions
-  const parseQuestions = (content: string): Question[] => {
+  const parseQuestions = (content: string) => {
     const lines = content.split('\n');
-    const questions: Question[] = [];
-    let currentQuestion: Question = {
+    const questions: any[] = [];
+    let currentQuestion: any = {
       text: '',
       options: [],
       correct_answer: '',
@@ -48,7 +32,6 @@ const TopicGenerator: React.FC<TopicGeneratorProps> = ({ subjectId, onQuestionsG
       if (!line) return; // Skip empty lines
 
       if (line.startsWith('- Question:')) {
-        // If there's a previous question with valid data, push it to the array
         if (
           currentQuestion.text &&
           currentQuestion.options.length === 4 &&
@@ -57,7 +40,6 @@ const TopicGenerator: React.FC<TopicGeneratorProps> = ({ subjectId, onQuestionsG
         ) {
           questions.push(currentQuestion);
         }
-        // Start a new question
         currentQuestion = {
           text: line.replace('- Question:', '').trim(),
           options: [],
@@ -68,7 +50,6 @@ const TopicGenerator: React.FC<TopicGeneratorProps> = ({ subjectId, onQuestionsG
         const optionsString = line.replace('- Options:', '').trim();
         const options = optionsString.split(',').map((opt) => {
           const optionText = opt.trim();
-          // Remove the A), B), etc. prefix if present
           return optionText.replace(/^[A-D]\)\s*/, '');
         });
         if (options.length === 4) {
@@ -76,7 +57,6 @@ const TopicGenerator: React.FC<TopicGeneratorProps> = ({ subjectId, onQuestionsG
         }
       } else if (line.startsWith('- Answer:') && currentQuestion.text) {
         const answer = line.replace('- Answer:', '').trim();
-        // Ensure the answer is one of 'A', 'B', 'C', 'D'
         if (['A', 'B', 'C', 'D'].includes(answer)) {
           currentQuestion.correct_answer = answer;
         }
@@ -88,7 +68,6 @@ const TopicGenerator: React.FC<TopicGeneratorProps> = ({ subjectId, onQuestionsG
       }
     });
 
-    // Add the last question if it exists and is valid
     if (
       currentQuestion.text &&
       currentQuestion.options.length === 4 &&
@@ -129,9 +108,6 @@ const TopicGenerator: React.FC<TopicGeneratorProps> = ({ subjectId, onQuestionsG
         });
       }
 
-      // Update local state with the questions for this subject
-      const updatedQuestions = getQuestionsBySubject(subjectId);
-      setQuestions(updatedQuestions);
       toast.success('Questions generated successfully!');
       setTopic('');
       if (onQuestionsGenerated) onQuestionsGenerated();
@@ -141,29 +117,6 @@ const TopicGenerator: React.FC<TopicGeneratorProps> = ({ subjectId, onQuestionsG
     } finally {
       setLoading(false);
     }
-  };
-
-  // Handle selecting/deselecting a question
-  const handleSelectQuestion = (questionText: string) => {
-    setSelectedQuestions((prev) =>
-      prev.includes(questionText)
-        ? prev.filter((text) => text !== questionText)
-        : [...prev, questionText]
-    );
-  };
-
-  // Handle deploying selected questions
-  const handleDeploy = () => {
-    if (selectedQuestions.length === 0) {
-      toast.error('Please select at least one question to deploy');
-      return;
-    }
-
-    const questionsToDeploy = questions.filter((q) => selectedQuestions.includes(q.text));
-    navigate(`/teacher/subject/${subjectId}/exam-setup`, {
-      state: { selectedQuestions: questionsToDeploy },
-    });
-    toast.success(`${selectedQuestions.length} question(s) ready for exam setup!`);
   };
 
   return (
@@ -203,53 +156,6 @@ const TopicGenerator: React.FC<TopicGeneratorProps> = ({ subjectId, onQuestionsG
       >
         {loading ? <AiOutlineLoading3Quarters className="animate-spin mr-2" /> : 'Generate Questions'}
       </button>
-
-      {/* Display Generated Questions */}
-      {questions.length > 0 && (
-        <div className="mt-6">
-          <h2 className="text-lg font-bold">Generated Questions</h2>
-          <ul className="space-y-4 mt-4">
-            {questions.map((question, index) => (
-              <li key={index} className="p-4 bg-gray-100 rounded-lg flex flex-col space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="font-bold">{index + 1}. {question.text}</p>
-                  <input
-                    type="checkbox"
-                    checked={selectedQuestions.includes(question.text)}
-                    onChange={() => handleSelectQuestion(question.text)}
-                    className="h-5 w-5 text-indigo-600 rounded"
-                  />
-                </div>
-                <div className="flex flex-col space-y-1">
-                  {question.options.map((option, idx) => (
-                    <p
-                      key={idx}
-                      className={
-                        question.correct_answer === String.fromCharCode(65 + idx)
-                          ? 'text-green-600'
-                          : ''
-                      }
-                    >
-                      {String.fromCharCode(65 + idx)}. {option}
-                    </p>
-                  ))}
-                </div>
-                <p className="text-sm text-gray-500">
-                  Correct Answer: {question.correct_answer}
-                </p>
-                <p className="text-sm text-gray-500">Difficulty: {question.difficulty}</p>
-              </li>
-            ))}
-          </ul>
-          {/* Deploy Selected Questions Button */}
-          <button
-            onClick={handleDeploy}
-            className="mt-4 w-full flex justify-center items-center px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700"
-          >
-            Deploy Selected Questions ({selectedQuestions.length})
-          </button>
-        </div>
-      )}
     </div>
   );
 };
