@@ -1,161 +1,235 @@
-// src/pages/teacher/components/TopicGenerator.tsx
-import { useState } from 'react';
+import React, { useState } from 'react';
+import { Icons } from '../../../components/icons';
 import { generateQuestionsFromText } from '../../../lib/api/gemini';
 import { useQuestionStore } from '../../../store/questionStore';
+import { useAuthStore } from '../../../store/authStore';
 import toast from 'react-hot-toast';
-import { AiOutlineLoading3Quarters } from 'react-icons/ai';
 
 interface TopicGeneratorProps {
   subjectId: string;
-  onQuestionsGenerated?: () => void;
+  onQuestionsGenerated: () => void;
+}
+
+interface Question {
+  text: string;
+  options: string[];
+  correct_answer: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  subject_id: string;
+  teacher_id: string;
+  marks: number;
+}
+
+interface GeneratedQuestion {
+  text: string;
+  options: string[];
+  correct_answer: number;
+  difficulty: 'easy' | 'medium' | 'hard';
 }
 
 const TopicGenerator: React.FC<TopicGeneratorProps> = ({ subjectId, onQuestionsGenerated }) => {
   const [topic, setTopic] = useState('');
   const [count, setCount] = useState(5);
   const [loading, setLoading] = useState(false);
+  const [generatedQuestions, setGeneratedQuestions] = useState<Question[]>([]);
+  const [selectedQuestions, setSelectedQuestions] = useState<Set<number>>(new Set());
+  const { user } = useAuthStore();
   const { addQuestion } = useQuestionStore();
 
-  // Parse the API response to extract questions
-  const parseQuestions = (content: string) => {
-    const lines = content.split('\n');
-    const questions: any[] = [];
-    let currentQuestion: any = {
-      text: '',
-      options: [],
-      correct_answer: '',
-      difficulty: 'medium',
-    };
-
-    lines.forEach((line) => {
-      line = line.trim();
-      if (!line) return; // Skip empty lines
-
-      if (line.startsWith('- Question:')) {
-        if (
-          currentQuestion.text &&
-          currentQuestion.options.length === 4 &&
-          currentQuestion.correct_answer &&
-          currentQuestion.difficulty
-        ) {
-          questions.push(currentQuestion);
-        }
-        currentQuestion = {
-          text: line.replace('- Question:', '').trim(),
-          options: [],
-          correct_answer: '',
-          difficulty: 'medium',
-        };
-      } else if (line.startsWith('- Options:') && currentQuestion.text) {
-        const optionsString = line.replace('- Options:', '').trim();
-        const options = optionsString.split(',').map((opt) => {
-          const optionText = opt.trim();
-          return optionText.replace(/^[A-D]\)\s*/, '');
-        });
-        if (options.length === 4) {
-          currentQuestion.options = options;
-        }
-      } else if (line.startsWith('- Answer:') && currentQuestion.text) {
-        const answer = line.replace('- Answer:', '').trim();
-        if (['A', 'B', 'C', 'D'].includes(answer)) {
-          currentQuestion.correct_answer = answer;
-        }
-      } else if (line.startsWith('- Difficulty:') && currentQuestion.text) {
-        const difficulty = line.replace('- Difficulty:', '').trim().toLowerCase();
-        if (['easy', 'medium', 'hard'].includes(difficulty)) {
-          currentQuestion.difficulty = difficulty as 'easy' | 'medium' | 'hard';
-        }
-      }
-    });
-
-    if (
-      currentQuestion.text &&
-      currentQuestion.options.length === 4 &&
-      currentQuestion.correct_answer &&
-      currentQuestion.difficulty
-    ) {
-      questions.push(currentQuestion);
-    }
-
-    return questions;
-  };
-
-  // Handle question generation
   const handleGenerate = async () => {
     if (!topic.trim()) {
-      toast.error('Please enter a valid topic');
+      toast.error('Please enter a topic');
       return;
     }
 
     setLoading(true);
     try {
-      const generatedResponse = await generateQuestionsFromText(topic, count);
-      const content = generatedResponse.candidates[0].content.parts[0].text;
-      const extractedQuestions = parseQuestions(content);
+      // Fetch generated questions
+      const rawQuestions: GeneratedQuestion[] = await generateQuestionsFromText(topic, count);
 
-      if (extractedQuestions.length === 0) {
-        throw new Error('No valid questions were extracted from the response');
-      }
+      // Transform GeneratedQuestion[] to Question[]
+      const questions: Question[] = rawQuestions.map((q) => ({
+        ...q,
+        subject_id: subjectId,
+        teacher_id: user!.id,
+        marks: 1, // Default marks value
+      }));
 
-      // Add each question to the store
-      for (const question of extractedQuestions) {
-        await addQuestion({
-          text: question.text,
-          options: question.options,
-          correct_answer: question.correct_answer,
-          difficulty: question.difficulty,
-          subject_id: subjectId,
-        });
-      }
-
-      toast.success('Questions generated successfully!');
-      setTopic('');
-      if (onQuestionsGenerated) onQuestionsGenerated();
+      setGeneratedQuestions(questions);
+      setSelectedQuestions(new Set(questions.map((_, i) => i)));
     } catch (error) {
+      console.error('Generation error:', error);
       toast.error('Failed to generate questions');
-      console.error('Topic generation error:', error);
     } finally {
       setLoading(false);
     }
   };
 
+  const toggleQuestionSelection = (index: number) => {
+    const newSelected = new Set(selectedQuestions);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
+    } else {
+      newSelected.add(index);
+    }
+    setSelectedQuestions(newSelected);
+  };
+
+  const handleSaveQuestions = async () => {
+    try {
+      const selectedQuestionsList = Array.from(selectedQuestions).map(
+        (index) => generatedQuestions[index]
+      );
+
+      await Promise.all(
+        selectedQuestionsList.map((question) =>
+          addQuestion({
+            text: question.text,
+            options: question.options,
+            correct_answer: question.correct_answer,
+            difficulty: question.difficulty,
+            subject_id: subjectId,
+            teacher_id: user!.id,
+            marks: 1,
+          })
+        )
+      );
+
+      toast.success('Selected questions saved successfully!');
+      onQuestionsGenerated();
+      setGeneratedQuestions([]);
+      setSelectedQuestions(new Set());
+    } catch (error) {
+      toast.error('Failed to save questions');
+    }
+  };
+
   return (
-    <div className="bg-white p-6 rounded-lg shadow space-y-6">
-      {/* Topic Input */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Enter Topic</label>
-        <textarea
-          value={topic}
-          onChange={(e) => setTopic(e.target.value)}
-          className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-          rows={4}
-          placeholder="Enter the topic for generating questions..."
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-lg shadow space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Enter Topic
+          </label>
+          <textarea
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+            rows={4}
+            placeholder="Enter the topic or concept for which you want to generate questions..."
+            disabled={loading}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Number of Questions
+          </label>
+          <input
+            type="number"
+            min="1"
+            max="20"
+            value={count}
+            onChange={(e) => setCount(parseInt(e.target.value))}
+            className="w-32 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+            disabled={loading}
+          />
+        </div>
+
+        <button
+          onClick={handleGenerate}
           disabled={loading}
-        />
+          className="w-full flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+        >
+          {loading ? (
+            <>
+              <Icons.Loader className="animate-spin -ml-1 mr-2 h-4 w-4" />
+              Generating Questions...
+            </>
+          ) : (
+            'Generate Questions'
+          )}
+        </button>
       </div>
 
-      {/* Number of Questions Input */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Number of Questions</label>
-        <input
-          type="number"
-          min="1"
-          max="20"
-          value={count}
-          onChange={(e) => setCount(parseInt(e.target.value))}
-          className="w-32 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-          disabled={loading}
-        />
-      </div>
+      {generatedQuestions.length > 0 && (
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-bold">Generated Questions</h2>
+            <div className="space-x-4">
+              <button
+                onClick={() => setSelectedQuestions(new Set(generatedQuestions.map((_, i) => i)))}
+                className="text-sm text-indigo-600 hover:text-indigo-800"
+              >
+                Select All
+              </button>
+              <button
+                onClick={() => setSelectedQuestions(new Set())}
+                className="text-sm text-indigo-600 hover:text-indigo-800"
+              >
+                Deselect All
+              </button>
+            </div>
+          </div>
 
-      {/* Generate Questions Button */}
-      <button
-        onClick={handleGenerate}
-        disabled={loading}
-        className="w-full flex justify-center items-center px-4 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:bg-indigo-400"
-      >
-        {loading ? <AiOutlineLoading3Quarters className="animate-spin mr-2" /> : 'Generate Questions'}
-      </button>
+          <div className="space-y-6">
+            {generatedQuestions.map((question, index) => (
+              <div
+                key={index}
+                className={`border rounded-lg p-4 space-y-3 cursor-pointer transition-colors ${
+                  selectedQuestions.has(index)
+                    ? 'border-indigo-500 bg-indigo-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+                onClick={() => toggleQuestionSelection(index)}
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedQuestions.has(index)}
+                      onChange={() => toggleQuestionSelection(index)}
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <p className="font-medium text-gray-900">
+                      {index + 1}. {question.text}
+                    </p>
+                  </div>
+                  <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">
+                    {question.difficulty}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {question.options.map((option, optIndex) => (
+                    <div
+                      key={optIndex}
+                      className={`p-2 rounded-md ${
+                        optIndex === question.correct_answer
+                          ? 'bg-green-50 border border-green-200 text-green-700'
+                          : 'bg-gray-50 border border-gray-200'
+                      }`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {String.fromCharCode(65 + optIndex)}. {option}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 flex justify-end">
+            <button
+              onClick={handleSaveQuestions}
+              disabled={selectedQuestions.size === 0}
+              className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+            >
+              Save Selected Questions
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
